@@ -1,0 +1,40 @@
+{
+  "name": "multi-translator",
+  "version": "2.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "start": "rollup -c -w",
+    "lint": "eslint src --fix"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "userscript": {
+    "name": "多语言划词翻译",
+    "description": "支持英、法、日、韩、泰、越、他加禄语，部分语言的翻译结果为英语",
+    "version": "2.0",
+    "match": "*://*/*",
+    "allFrames": "true",
+    "grant": "GM_xmlhttpRequest",
+    "run-at": "document-end"
+  },
+  "devDependencies": {
+    "@rollup/plugin-node-resolve": "^13.1.3",
+    "@rollup/plugin-typescript": "^8.3.1",
+    "@tsconfig/svelte": "^3.0.0",
+    "@types/greasemonkey": "^4.0.2",
+    "@types/tampermonkey": "^4.0.5",
+    "@typescript-eslint/eslint-plugin": "^5.14.0",
+    "@typescript-eslint/parser": "^5.14.0",
+    "eslint": "^8.10.0",
+    "eslint-config-airbnb-base": "^15.0.0",
+    "eslint-plugin-svelte3": "^3.4.1",
+    "rollup": "^2.70.0",
+    "rollup-plugin-serve": "^1.1.0",
+    "rollup-plugin-svelte": "^7.1.0",
+    "svelte": "^3.46.4",
+    "svelte-preprocess": "^4.10.4",
+    "typescript": "^4.6.2"
+  }
+}

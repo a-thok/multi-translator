@@ -1,0 +1,16 @@
+{
+  "extends": "@tsconfig/svelte/tsconfig.json",
+  "compilerOptions": {
+    "noEmitOnError": false,
+    "rootDir": "src",
+    "lib": ["DOM", "ES2021"],
+    "module": "ES2020",
+    "target": "ES2021",
+    "jsx": "preserve",
+    "sourceMap": true,
+    "strict": true,
+    "types": ["svelte", "tampermonkey"]
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules/*", "dist/*"]
+}
