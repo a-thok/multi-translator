@@ -33,9 +33,20 @@ window.addEventListener('mousedown', () => {
 function onTranslate() {
   currentLangs = Object.values(langs).filter((lang: Lang) => lang.is(text));
   setTimeout(() => {
-    setPosition(panel, rect);
+    // 156 用于补偿受展开动画影响而缺失的面板高度
+    setPosition(panel, rect, 156);
     showTrigger = false;
     showPanel = true;
+  });
+}
+
+function onToggleLanguage(event: CustomEvent<Lang>) {
+  currentLangs = currentLangs.map((currentLang) => {
+    if (currentLang !== event.detail) {
+      // eslint-disable-next-line no-param-reassign
+      currentLang.enabled = false;
+    }
+    return currentLang;
   });
 }
 </script>
@@ -63,7 +74,7 @@ function onTranslate() {
     class:is-show={showPanel}
   >
     {#each currentLangs as lang}
-      <LangSection lang={lang} text={text}></LangSection>
+      <LangSection lang={lang} text={text} on:toggle="{onToggleLanguage}"></LangSection>
     {/each}
   </div>
 </div>
@@ -98,8 +109,6 @@ function onTranslate() {
 }
 
 .panel {
-  --content-min-height: 8em;
-
   position: fixed;
   top: 0;
   left: 0;
@@ -124,13 +133,15 @@ function onTranslate() {
   font-family: "Segoe UI", "Microsoft Yahei", meiryo, sans-serif;
   font-size: 13px;
   line-height: 1.5;
-  transition: visibility 0.3s, opcacity 0.3s;
+  transition: visibility 0.2s, opacity 0.2s;
+  transition-timing-function: ease-in;
 }
 
 .trigger:not(.is-show),
 .panel:not(.is-show) {
   visibility: hidden;
   opacity: 0;
+  transition-timing-function: ease-out;
 }
 
 .panel:empty {

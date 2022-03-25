@@ -13,6 +13,7 @@
     'use strict';
 
     function noop() { }
+    const identity = x => x;
     function is_promise(value) {
         return value && typeof value === 'object' && typeof value.then === 'function';
     }
@@ -42,6 +43,41 @@
     function is_empty(obj) {
         return Object.keys(obj).length === 0;
     }
+
+    const is_client = typeof window !== 'undefined';
+    let now = is_client
+        ? () => window.performance.now()
+        : () => Date.now();
+    let raf = is_client ? cb => requestAnimationFrame(cb) : noop;
+
+    const tasks = new Set();
+    function run_tasks(now) {
+        tasks.forEach(task => {
+            if (!task.c(now)) {
+                tasks.delete(task);
+                task.f();
+            }
+        });
+        if (tasks.size !== 0)
+            raf(run_tasks);
+    }
+    /**
+     * Creates a new task that runs on each raf frame
+     * until it returns a falsy value or is aborted
+     */
+    function loop(callback) {
+        let task;
+        if (tasks.size === 0)
+            raf(run_tasks);
+        return {
+            promise: new Promise(fulfill => {
+                tasks.add(task = { c: callback, f: fulfill });
+            }),
+            abort() {
+                tasks.delete(task);
+            }
+        };
+    }
     function append(target, node) {
         target.appendChild(node);
     }
@@ -62,6 +98,11 @@
             return root;
         }
         return node.ownerDocument;
+    }
+    function append_empty_stylesheet(node) {
+        const style_element = element('style');
+        append_stylesheet(get_root_for_style(node), style_element);
+        return style_element.sheet;
     }
     function append_stylesheet(node, style) {
         append(node.head || node, style);
@@ -121,6 +162,11 @@
     function toggle_class(element, name, toggle) {
         element.classList[toggle ? 'add' : 'remove'](name);
     }
+    function custom_event(type, detail, bubbles = false) {
+        const e = document.createEvent('CustomEvent');
+        e.initCustomEvent(type, bubbles, false, detail);
+        return e;
+    }
     class HtmlTag {
         constructor() {
             this.e = this.n = null;
@@ -155,6 +201,72 @@
         }
     }
 
+    // we need to store the information for multiple documents because a Svelte application could also contain iframes
+    // https://github.com/sveltejs/svelte/issues/3624
+    const managed_styles = new Map();
+    let active = 0;
+    // https://github.com/darkskyapp/string-hash/blob/master/index.js
+    function hash(str) {
+        let hash = 5381;
+        let i = str.length;
+        while (i--)
+            hash = ((hash << 5) - hash) ^ str.charCodeAt(i);
+        return hash >>> 0;
+    }
+    function create_style_information(doc, node) {
+        const info = { stylesheet: append_empty_stylesheet(node), rules: {} };
+        managed_styles.set(doc, info);
+        return info;
+    }
+    function create_rule(node, a, b, duration, delay, ease, fn, uid = 0) {
+        const step = 16.666 / duration;
+        let keyframes = '{\n';
+        for (let p = 0; p <= 1; p += step) {
+            const t = a + (b - a) * ease(p);
+            keyframes += p * 100 + `%{${fn(t, 1 - t)}}\n`;
+        }
+        const rule = keyframes + `100% {${fn(b, 1 - b)}}\n}`;
+        const name = `__svelte_${hash(rule)}_${uid}`;
+        const doc = get_root_for_style(node);
+        const { stylesheet, rules } = managed_styles.get(doc) || create_style_information(doc, node);
+        if (!rules[name]) {
+            rules[name] = true;
+            stylesheet.insertRule(`@keyframes ${name} ${rule}`, stylesheet.cssRules.length);
+        }
+        const animation = node.style.animation || '';
+        node.style.animation = `${animation ? `${animation}, ` : ''}${name} ${duration}ms linear ${delay}ms 1 both`;
+        active += 1;
+        return name;
+    }
+    function delete_rule(node, name) {
+        const previous = (node.style.animation || '').split(', ');
+        const next = previous.filter(name
+            ? anim => anim.indexOf(name) < 0 // remove specific animation
+            : anim => anim.indexOf('__svelte') === -1 // remove all Svelte animations
+        );
+        const deleted = previous.length - next.length;
+        if (deleted) {
+            node.style.animation = next.join(', ');
+            active -= deleted;
+            if (!active)
+                clear_rules();
+        }
+    }
+    function clear_rules() {
+        raf(() => {
+            if (active)
+                return;
+            managed_styles.forEach(info => {
+                const { stylesheet } = info;
+                let i = stylesheet.cssRules.length;
+                while (i--)
+                    stylesheet.deleteRule(i);
+                info.rules = {};
+            });
+            managed_styles.clear();
+        });
+    }
+
     let current_component;
     function set_current_component(component) {
         current_component = component;
@@ -163,6 +275,20 @@
         if (!current_component)
             throw new Error('Function called outside component initialization');
         return current_component;
+    }
+    function createEventDispatcher() {
+        const component = get_current_component();
+        return (type, detail) => {
+            const callbacks = component.$$.callbacks[type];
+            if (callbacks) {
+                // TODO are there situations where events could be dispatched
+                // in a server (non-DOM) environment?
+                const event = custom_event(type, detail);
+                callbacks.slice().forEach(fn => {
+                    fn.call(component, event);
+                });
+            }
+        };
     }
     // TODO figure out if we still want to support
     // shorthand events, or if we want to implement
@@ -256,6 +382,20 @@
             $$.after_update.forEach(add_render_callback);
         }
     }
+
+    let promise;
+    function wait() {
+        if (!promise) {
+            promise = Promise.resolve();
+            promise.then(() => {
+                promise = null;
+            });
+        }
+        return promise;
+    }
+    function dispatch(node, direction, kind) {
+        node.dispatchEvent(custom_event(`${direction ? 'intro' : 'outro'}${kind}`));
+    }
     const outroing = new Set();
     let outros;
     function group_outros() {
@@ -292,6 +432,112 @@
             });
             block.o(local);
         }
+    }
+    const null_transition = { duration: 0 };
+    function create_bidirectional_transition(node, fn, params, intro) {
+        let config = fn(node, params);
+        let t = intro ? 0 : 1;
+        let running_program = null;
+        let pending_program = null;
+        let animation_name = null;
+        function clear_animation() {
+            if (animation_name)
+                delete_rule(node, animation_name);
+        }
+        function init(program, duration) {
+            const d = (program.b - t);
+            duration *= Math.abs(d);
+            return {
+                a: t,
+                b: program.b,
+                d,
+                duration,
+                start: program.start,
+                end: program.start + duration,
+                group: program.group
+            };
+        }
+        function go(b) {
+            const { delay = 0, duration = 300, easing = identity, tick = noop, css } = config || null_transition;
+            const program = {
+                start: now() + delay,
+                b
+            };
+            if (!b) {
+                // @ts-ignore todo: improve typings
+                program.group = outros;
+                outros.r += 1;
+            }
+            if (running_program || pending_program) {
+                pending_program = program;
+            }
+            else {
+                // if this is an intro, and there's a delay, we need to do
+                // an initial tick and/or apply CSS animation immediately
+                if (css) {
+                    clear_animation();
+                    animation_name = create_rule(node, t, b, duration, delay, easing, css);
+                }
+                if (b)
+                    tick(0, 1);
+                running_program = init(program, duration);
+                add_render_callback(() => dispatch(node, b, 'start'));
+                loop(now => {
+                    if (pending_program && now > pending_program.start) {
+                        running_program = init(pending_program, duration);
+                        pending_program = null;
+                        dispatch(node, running_program.b, 'start');
+                        if (css) {
+                            clear_animation();
+                            animation_name = create_rule(node, t, running_program.b, running_program.duration, 0, easing, config.css);
+                        }
+                    }
+                    if (running_program) {
+                        if (now >= running_program.end) {
+                            tick(t = running_program.b, 1 - t);
+                            dispatch(node, running_program.b, 'end');
+                            if (!pending_program) {
+                                // we're done
+                                if (running_program.b) {
+                                    // intro — we can tidy up immediately
+                                    clear_animation();
+                                }
+                                else {
+                                    // outro — needs to be coordinated
+                                    if (!--running_program.group.r)
+                                        run_all(running_program.group.c);
+                                }
+                            }
+                            running_program = null;
+                        }
+                        else if (now >= running_program.start) {
+                            const p = now - running_program.start;
+                            t = running_program.a + running_program.d * easing(p / running_program.duration);
+                            tick(t, 1 - t);
+                        }
+                    }
+                    return !!(running_program || pending_program);
+                });
+            }
+        }
+        return {
+            run(b) {
+                if (is_function(config)) {
+                    wait().then(() => {
+                        // @ts-ignore
+                        config = config();
+                        go(b);
+                    });
+                }
+                else {
+                    go(b);
+                }
+            },
+            end() {
+                clear_animation();
+                running_program = pending_program = null;
+            }
+        };
     }
 
     function handle_promise(promise, info) {
@@ -504,6 +750,37 @@
         }
     }
 
+    function cubicOut(t) {
+        const f = t - 1.0;
+        return f * f * f + 1.0;
+    }
+
+    function slide(node, { delay = 0, duration = 400, easing = cubicOut } = {}) {
+        const style = getComputedStyle(node);
+        const opacity = +style.opacity;
+        const height = parseFloat(style.height);
+        const padding_top = parseFloat(style.paddingTop);
+        const padding_bottom = parseFloat(style.paddingBottom);
+        const margin_top = parseFloat(style.marginTop);
+        const margin_bottom = parseFloat(style.marginBottom);
+        const border_top_width = parseFloat(style.borderTopWidth);
+        const border_bottom_width = parseFloat(style.borderBottomWidth);
+        return {
+            delay,
+            duration,
+            easing,
+            css: t => 'overflow: hidden;' +
+                `opacity: ${Math.min(t * 20, 1) * opacity};` +
+                `height: ${t * height}px;` +
+                `padding-top: ${t * padding_top}px;` +
+                `padding-bottom: ${t * padding_bottom}px;` +
+                `margin-top: ${t * margin_top}px;` +
+                `margin-bottom: ${t * margin_bottom}px;` +
+                `border-top-width: ${t * border_top_width}px;` +
+                `border-bottom-width: ${t * border_bottom_width}px;`
+        };
+    }
+
     const getYoudaoApi = (le, dict) => (`http://dict.youdao.com/jsonapi?le=${le}&dicts=${encodeURIComponent(`{"count": 1, dicts: [["${dict}"]]}`)}&jsonversion=2&q=`);
     const getYoudaoVoice = (audio) => `https://dict.youdao.com/dictvoice?audio=${audio}`;
     function get(url, responseType) {
@@ -517,7 +794,7 @@
             });
         });
     }
-    function setPosition(el, rect) {
+    function setPosition(el, rect, offset = 0) {
         const { innerWidth, innerHeight } = window;
         let left = rect.right;
         let top = rect.bottom;
@@ -525,8 +802,8 @@
         if (left + clientWidth > innerWidth) {
             left -= (rect.width + clientWidth);
         }
-        if (top + clientHeight > innerHeight) {
-            top -= (rect.height + clientHeight);
+        if (top + clientHeight + offset > innerHeight) {
+            top -= (rect.height + clientHeight + offset);
         }
         /* eslint-disable no-param-reassign */
         el.style.left = `${left}px`;
@@ -952,22 +1229,22 @@
     /* src/components/LangSection.svelte generated by Svelte v3.46.4 */
 
     function add_css$1(target) {
-    	append_styles(target, "svelte-1squjxh", ".lang.svelte-1squjxh.svelte-1squjxh:not(:first-child){margin-top:1em}.header.svelte-1squjxh.svelte-1squjxh{display:flex;align-items:center;height:2.5em;border-bottom:1px solid #f5f5f5;font-size:12px;transition:0.2s}.switch.svelte-1squjxh.svelte-1squjxh{all:unset;width:1em;height:1em;padding:0.5em;margin-left:-0.5em;cursor:pointer}.switch.svelte-1squjxh>svg.svelte-1squjxh{fill:#a2a5a6}.switch.svelte-1squjxh:hover>svg.svelte-1squjxh{fill:var(--main-color)}.name.svelte-1squjxh.svelte-1squjxh{margin:0;color:var(--main-color);font-family:'Segoe UI', 'Malgun Gothic', meiryo, sans-serif;font-weight:600;margin-right:auto}.more.svelte-1squjxh.svelte-1squjxh{width:1rem;height:1rem;padding:0.5em;color:#a2a5a6;transition:0.3s}.more.svelte-1squjxh.svelte-1squjxh:hover{color:#000}.content.svelte-1squjxh.svelte-1squjxh{min-height:var(--content-min-height);max-height:250px;overflow:auto;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-gutter:stable}.content.svelte-1squjxh a.svelte-1squjxh{color:var(--main-color)}.tip.svelte-1squjxh.svelte-1squjxh{display:flex;flex-direction:column;justify-content:center;align-items:center;gap:1em;width:100%;height:var(--content-min-height);margin-top:0.5em;color:#666}.tip.svelte-1squjxh p.svelte-1squjxh{margin:0}.alternatives.svelte-1squjxh.svelte-1squjxh{display:flex;gap:0.4em}.alternatives.svelte-1squjxh img.svelte-1squjxh{border-radius:3px}.loading.svelte-1squjxh.svelte-1squjxh{box-sizing:border-box;display:block;padding:1.5em;margin:0.5em auto 0;width:var(--content-min-height);height:var(--content-min-height);color:var(--main-color);opacity:0.75}");
+    	append_styles(target, "svelte-i01ukl", ".lang.svelte-i01ukl.svelte-i01ukl:not(:first-child){margin-top:1em}.header.svelte-i01ukl.svelte-i01ukl{display:flex;align-items:center;height:2.5em;border-bottom:1px solid #f5f5f5;font-size:12px;transition:0.2s}.switch.svelte-i01ukl.svelte-i01ukl{all:unset;width:1em;height:1em;padding:0.5em;margin-left:-0.5em;cursor:pointer}.switch.svelte-i01ukl>svg.svelte-i01ukl{fill:#a2a5a6}.switch.svelte-i01ukl:hover>svg.svelte-i01ukl{fill:var(--main-color)}.name.svelte-i01ukl.svelte-i01ukl{margin:0;color:var(--main-color);font-family:'Segoe UI', 'Malgun Gothic', meiryo, sans-serif;font-weight:600;margin-right:auto}.more.svelte-i01ukl.svelte-i01ukl{width:1rem;height:1rem;padding:0.5em;color:#a2a5a6;transition:0.3s}.more.svelte-i01ukl.svelte-i01ukl:hover{color:#000}.content.svelte-i01ukl.svelte-i01ukl{height:12em;overflow:auto;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-gutter:stable}.content.svelte-i01ukl a.svelte-i01ukl{color:var(--main-color)}.tip.svelte-i01ukl.svelte-i01ukl{display:flex;flex-direction:column;justify-content:center;align-items:center;gap:1em;width:100%;height:100%;margin-top:0.5em;color:#666}.tip.svelte-i01ukl p.svelte-i01ukl{margin:0}.alternatives.svelte-i01ukl.svelte-i01ukl{display:flex;gap:0.4em}.alternatives.svelte-i01ukl img.svelte-i01ukl{border-radius:3px}.loading.svelte-i01ukl.svelte-i01ukl{box-sizing:border-box;display:block;padding:3em;margin:0.5em auto 0;height:100%;aspect-ratio:1;fill:var(--main-color);opacity:0.75}");
     }
 
     function get_each_context_1(ctx, list, i) {
     	const child_ctx = ctx.slice();
-    	child_ctx[9] = list[i];
+    	child_ctx[10] = list[i];
     	return child_ctx;
     }
 
     function get_each_context$1(ctx, list, i) {
     	const child_ctx = ctx.slice();
-    	child_ctx[5] = list[i];
+    	child_ctx[6] = list[i];
     	return child_ctx;
     }
 
-    // (22:6) {:else}
+    // (29:6) {:else}
     function create_else_block(ctx) {
     	let svg;
     	let path;
@@ -983,7 +1260,7 @@
     			attr(svg, "xmlns", "http://www.w3.org/2000/svg");
     			attr(svg, "viewBox", "0 0 20 20");
     			attr(svg, "fill", "currentColor");
-    			attr(svg, "class", "svelte-1squjxh");
+    			attr(svg, "class", "svelte-i01ukl");
     		},
     		m(target, anchor) {
     			insert(target, svg, anchor);
@@ -995,7 +1272,7 @@
     	};
     }
 
-    // (18:6) {#if lang.enabled}
+    // (25:6) {#if lang.enabled}
     function create_if_block_1(ctx) {
     	let svg;
     	let path;
@@ -1011,7 +1288,7 @@
     			attr(svg, "xmlns", "http://www.w3.org/2000/svg");
     			attr(svg, "viewBox", "0 0 20 20");
     			attr(svg, "fill", "currentColor");
-    			attr(svg, "class", "svelte-1squjxh");
+    			attr(svg, "class", "svelte-i01ukl");
     		},
     		m(target, anchor) {
     			insert(target, svg, anchor);
@@ -1023,10 +1300,11 @@
     	};
     }
 
-    // (46:2) {#if lang.enabled}
+    // (53:2) {#if lang.enabled}
     function create_if_block(ctx) {
     	let div;
     	let promise;
+    	let div_transition;
     	let current;
 
     	let info = {
@@ -1037,8 +1315,8 @@
     		pending: create_pending_block,
     		then: create_then_block,
     		catch: create_catch_block,
-    		value: 4,
-    		error: 8,
+    		value: 5,
+    		error: 9,
     		blocks: [,,,]
     	};
 
@@ -1048,7 +1326,7 @@
     		c() {
     			div = element("div");
     			info.block.c();
-    			attr(div, "class", "content svelte-1squjxh");
+    			attr(div, "class", "content svelte-i01ukl");
     		},
     		m(target, anchor) {
     			insert(target, div, anchor);
@@ -1068,6 +1346,12 @@
     		i(local) {
     			if (current) return;
     			transition_in(info.block);
+
+    			add_render_callback(() => {
+    				if (!div_transition) div_transition = create_bidirectional_transition(div, slide, {}, true);
+    				div_transition.run(1);
+    			});
+
     			current = true;
     		},
     		o(local) {
@@ -1076,6 +1360,8 @@
     				transition_out(block);
     			}
 
+    			if (!div_transition) div_transition = create_bidirectional_transition(div, slide, {}, false);
+    			div_transition.run(0);
     			current = false;
     		},
     		d(detaching) {
@@ -1083,15 +1369,16 @@
     			info.block.d();
     			info.token = null;
     			info = null;
+    			if (detaching && div_transition) div_transition.end();
     		}
     	};
     }
 
-    // (78:6) {:catch error}
+    // (89:6) {:catch error}
     function create_catch_block(ctx) {
     	let div;
     	let p0;
-    	let t0_value = (/*error*/ ctx[8].message || '查询出错') + "";
+    	let t0_value = (/*error*/ ctx[9].message || '查询出错') + "";
     	let t0;
     	let t1;
     	let t2;
@@ -1124,9 +1411,9 @@
     				each_blocks[i].c();
     			}
 
-    			attr(p0, "class", "svelte-1squjxh");
-    			attr(p1, "class", "alternatives svelte-1squjxh");
-    			attr(div, "class", "tip svelte-1squjxh");
+    			attr(p0, "class", "svelte-i01ukl");
+    			attr(p1, "class", "alternatives svelte-i01ukl");
+    			attr(div, "class", "tip svelte-i01ukl");
     		},
     		m(target, anchor) {
     			insert(target, div, anchor);
@@ -1141,7 +1428,7 @@
     			}
     		},
     		p(ctx, dirty) {
-    			if (dirty & /*lang, text*/ 3 && t0_value !== (t0_value = (/*error*/ ctx[8].message || '查询出错') + "")) set_data(t0, t0_value);
+    			if (dirty & /*lang, text*/ 3 && t0_value !== (t0_value = (/*error*/ ctx[9].message || '查询出错') + "")) set_data(t0, t0_value);
 
     			if (dirty & /*lang, text*/ 3) {
     				each_value_1 = /*lang*/ ctx[0].alternatives.concat([
@@ -1182,7 +1469,7 @@
     	};
     }
 
-    // (82:12) {#each lang.alternatives.concat([{               name: '维基词典',               url: 'https://en.wiktionary.org/wiki/',               icon: 'https://en.wiktionary.org/static/apple-touch/wiktionary/en.png',             }]) as item }
+    // (93:12) {#each lang.alternatives.concat([{               name: '维基词典',               url: 'https://en.wiktionary.org/wiki/',               icon: 'https://en.wiktionary.org/static/apple-touch/wiktionary/en.png',             }]) as item }
     function create_each_block_1(ctx) {
     	let a;
     	let img;
@@ -1197,15 +1484,15 @@
     			a = element("a");
     			img = element("img");
     			t = space();
-    			if (!src_url_equal(img.src, img_src_value = /*item*/ ctx[9].icon)) attr(img, "src", img_src_value);
-    			attr(img, "alt", img_alt_value = /*item*/ ctx[9].name);
+    			if (!src_url_equal(img.src, img_src_value = /*item*/ ctx[10].icon)) attr(img, "src", img_src_value);
+    			attr(img, "alt", img_alt_value = /*item*/ ctx[10].name);
     			attr(img, "width", "24");
     			attr(img, "height", "24");
-    			attr(img, "class", "svelte-1squjxh");
-    			attr(a, "href", a_href_value = /*item*/ ctx[9].url + /*text*/ ctx[1]);
+    			attr(img, "class", "svelte-i01ukl");
+    			attr(a, "href", a_href_value = /*item*/ ctx[10].url + /*text*/ ctx[1]);
     			attr(a, "target", "_blank");
-    			attr(a, "title", a_title_value = "去" + /*item*/ ctx[9].name + "查询" + /*text*/ ctx[1]);
-    			attr(a, "class", "svelte-1squjxh");
+    			attr(a, "title", a_title_value = "去" + /*item*/ ctx[10].name + "查询" + /*text*/ ctx[1]);
+    			attr(a, "class", "svelte-i01ukl");
     		},
     		m(target, anchor) {
     			insert(target, a, anchor);
@@ -1213,19 +1500,19 @@
     			append(a, t);
     		},
     		p(ctx, dirty) {
-    			if (dirty & /*lang*/ 1 && !src_url_equal(img.src, img_src_value = /*item*/ ctx[9].icon)) {
+    			if (dirty & /*lang*/ 1 && !src_url_equal(img.src, img_src_value = /*item*/ ctx[10].icon)) {
     				attr(img, "src", img_src_value);
     			}
 
-    			if (dirty & /*lang*/ 1 && img_alt_value !== (img_alt_value = /*item*/ ctx[9].name)) {
+    			if (dirty & /*lang*/ 1 && img_alt_value !== (img_alt_value = /*item*/ ctx[10].name)) {
     				attr(img, "alt", img_alt_value);
     			}
 
-    			if (dirty & /*lang, text*/ 3 && a_href_value !== (a_href_value = /*item*/ ctx[9].url + /*text*/ ctx[1])) {
+    			if (dirty & /*lang, text*/ 3 && a_href_value !== (a_href_value = /*item*/ ctx[10].url + /*text*/ ctx[1])) {
     				attr(a, "href", a_href_value);
     			}
 
-    			if (dirty & /*lang, text*/ 3 && a_title_value !== (a_title_value = "去" + /*item*/ ctx[9].name + "查询" + /*text*/ ctx[1])) {
+    			if (dirty & /*lang, text*/ 3 && a_title_value !== (a_title_value = "去" + /*item*/ ctx[10].name + "查询" + /*text*/ ctx[1])) {
     				attr(a, "title", a_title_value);
     			}
     		},
@@ -1235,11 +1522,11 @@
     	};
     }
 
-    // (74:6) {:then results}
+    // (85:6) {:then results}
     function create_then_block(ctx) {
     	let each_1_anchor;
     	let current;
-    	let each_value = /*results*/ ctx[4];
+    	let each_value = /*results*/ ctx[5];
     	let each_blocks = [];
 
     	for (let i = 0; i < each_value.length; i += 1) {
@@ -1268,7 +1555,7 @@
     		},
     		p(ctx, dirty) {
     			if (dirty & /*lang, text*/ 3) {
-    				each_value = /*results*/ ctx[4];
+    				each_value = /*results*/ ctx[5];
     				let i;
 
     				for (i = 0; i < each_value.length; i += 1) {
@@ -1319,11 +1606,11 @@
     	};
     }
 
-    // (75:8) {#each results as entry}
+    // (86:8) {#each results as entry}
     function create_each_block$1(ctx) {
     	let resultentry;
     	let current;
-    	resultentry = new ResultEntry({ props: { entry: /*entry*/ ctx[5] } });
+    	resultentry = new ResultEntry({ props: { entry: /*entry*/ ctx[6] } });
 
     	return {
     		c() {
@@ -1335,7 +1622,7 @@
     		},
     		p(ctx, dirty) {
     			const resultentry_changes = {};
-    			if (dirty & /*lang, text*/ 3) resultentry_changes.entry = /*entry*/ ctx[5];
+    			if (dirty & /*lang, text*/ 3) resultentry_changes.entry = /*entry*/ ctx[6];
     			resultentry.$set(resultentry_changes);
     		},
     		i(local) {
@@ -1353,72 +1640,65 @@
     	};
     }
 
-    // (48:33)          <svg aria-hidden="true" class="loading" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="currentColor">             <rect x="20" y="20" width="4" height="10">               <animateTransform                 attributeType="xml"                 attributeName="transform" type="translate"                 values="0 0; 0 20; 0 0"                 begin="0" dur="0.6s" repeatCount="indefinite"               />             </rect>             <rect x="30" y="20" width="4" height="10">               <animateTransform attributeType="xml"                 attributeName="transform" type="translate"                 values="0 0; 0 20; 0 0"                 begin="0.2s" dur="0.6s" repeatCount="indefinite"               />             </rect>             <rect x="40" y="20" width="4" height="10">               <animateTransform                 attributeType="xml"                 attributeName="transform" type="translate"                 values="0 0; 0 20; 0 0"                 begin="0.4s" dur="0.6s" repeatCount="indefinite"               />             </rect>         </svg>       {:then results}
+    // (55:33)          <svg aria-hidden="true" class="loading" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 50 100">           <circle cx="6" cy="50" r="6">             <animateTransform                attributeName="transform"                dur="1s"                type="translate"                values="0 15 ; 0 -15; 0 15"                repeatCount="indefinite"                begin="0.1"/>           </circle>           <circle cx="30" cy="50" r="6">             <animateTransform                attributeName="transform"                dur="1s"                type="translate"                values="0 10 ; 0 -10; 0 10"                repeatCount="indefinite"                begin="0.2"/>           </circle>           <circle cx="54" cy="50" r="6">             <animateTransform                attributeName="transform"                dur="1s"                type="translate"                values="0 5 ; 0 -5; 0 5"                repeatCount="indefinite"                begin="0.3"/>           </circle>         </svg>       {:then results}
     function create_pending_block(ctx) {
     	let svg;
-    	let rect0;
+    	let circle0;
     	let animateTransform0;
-    	let rect1;
+    	let circle1;
     	let animateTransform1;
-    	let rect2;
+    	let circle2;
     	let animateTransform2;
 
     	return {
     		c() {
     			svg = svg_element("svg");
-    			rect0 = svg_element("rect");
+    			circle0 = svg_element("circle");
     			animateTransform0 = svg_element("animateTransform");
-    			rect1 = svg_element("rect");
+    			circle1 = svg_element("circle");
     			animateTransform1 = svg_element("animateTransform");
-    			rect2 = svg_element("rect");
+    			circle2 = svg_element("circle");
     			animateTransform2 = svg_element("animateTransform");
-    			attr(animateTransform0, "attributeType", "xml");
     			attr(animateTransform0, "attributeName", "transform");
+    			attr(animateTransform0, "dur", "1s");
     			attr(animateTransform0, "type", "translate");
-    			attr(animateTransform0, "values", "0 0; 0 20; 0 0");
-    			attr(animateTransform0, "begin", "0");
-    			attr(animateTransform0, "dur", "0.6s");
+    			attr(animateTransform0, "values", "0 15 ; 0 -15; 0 15");
     			attr(animateTransform0, "repeatCount", "indefinite");
-    			attr(rect0, "x", "20");
-    			attr(rect0, "y", "20");
-    			attr(rect0, "width", "4");
-    			attr(rect0, "height", "10");
-    			attr(animateTransform1, "attributeType", "xml");
+    			attr(animateTransform0, "begin", "0.1");
+    			attr(circle0, "cx", "6");
+    			attr(circle0, "cy", "50");
+    			attr(circle0, "r", "6");
     			attr(animateTransform1, "attributeName", "transform");
+    			attr(animateTransform1, "dur", "1s");
     			attr(animateTransform1, "type", "translate");
-    			attr(animateTransform1, "values", "0 0; 0 20; 0 0");
-    			attr(animateTransform1, "begin", "0.2s");
-    			attr(animateTransform1, "dur", "0.6s");
+    			attr(animateTransform1, "values", "0 10 ; 0 -10; 0 10");
     			attr(animateTransform1, "repeatCount", "indefinite");
-    			attr(rect1, "x", "30");
-    			attr(rect1, "y", "20");
-    			attr(rect1, "width", "4");
-    			attr(rect1, "height", "10");
-    			attr(animateTransform2, "attributeType", "xml");
+    			attr(animateTransform1, "begin", "0.2");
+    			attr(circle1, "cx", "30");
+    			attr(circle1, "cy", "50");
+    			attr(circle1, "r", "6");
     			attr(animateTransform2, "attributeName", "transform");
+    			attr(animateTransform2, "dur", "1s");
     			attr(animateTransform2, "type", "translate");
-    			attr(animateTransform2, "values", "0 0; 0 20; 0 0");
-    			attr(animateTransform2, "begin", "0.4s");
-    			attr(animateTransform2, "dur", "0.6s");
+    			attr(animateTransform2, "values", "0 5 ; 0 -5; 0 5");
     			attr(animateTransform2, "repeatCount", "indefinite");
-    			attr(rect2, "x", "40");
-    			attr(rect2, "y", "20");
-    			attr(rect2, "width", "4");
-    			attr(rect2, "height", "10");
+    			attr(animateTransform2, "begin", "0.3");
+    			attr(circle2, "cx", "54");
+    			attr(circle2, "cy", "50");
+    			attr(circle2, "r", "6");
     			attr(svg, "aria-hidden", "true");
-    			attr(svg, "class", "loading svelte-1squjxh");
+    			attr(svg, "class", "loading svelte-i01ukl");
     			attr(svg, "xmlns", "http://www.w3.org/2000/svg");
-    			attr(svg, "viewBox", "0 0 64 64");
-    			attr(svg, "fill", "currentColor");
+    			attr(svg, "viewBox", "0 0 50 100");
     		},
     		m(target, anchor) {
     			insert(target, svg, anchor);
-    			append(svg, rect0);
-    			append(rect0, animateTransform0);
-    			append(svg, rect1);
-    			append(rect1, animateTransform1);
-    			append(svg, rect2);
-    			append(rect2, animateTransform2);
+    			append(svg, circle0);
+    			append(circle0, animateTransform0);
+    			append(svg, circle1);
+    			append(circle1, animateTransform1);
+    			append(svg, circle2);
+    			append(circle2, animateTransform2);
     		},
     		p: noop,
     		i: noop,
@@ -1476,24 +1756,24 @@
     			path1 = svg_element("path");
     			t3 = space();
     			if (if_block1) if_block1.c();
-    			attr(button, "class", "switch svelte-1squjxh");
+    			attr(button, "class", "switch svelte-i01ukl");
     			attr(button, "role", "switch");
     			attr(button, "aria-checked", button_aria_checked_value = /*lang*/ ctx[0].enabled);
     			attr(button, "title", button_title_value = "" + ((/*lang*/ ctx[0].enabled ? '收起' : '展开') + /*lang*/ ctx[0].name + "语查询"));
-    			attr(span, "class", "name svelte-1squjxh");
+    			attr(span, "class", "name svelte-i01ukl");
     			attr(path0, "d", "M11 3a1 1 0 100 2h2.586l-6.293 6.293a1 1 0 101.414 1.414L15 6.414V9a1 1 0 102 0V4a1 1 0 00-1-1h-5z");
     			attr(path1, "d", "M5 5a2 2 0 00-2 2v8a2 2 0 002 2h8a2 2 0 002-2v-3a1 1 0 10-2 0v3H5V7h3a1 1 0 000-2H5z");
     			attr(svg, "aria-hidden", "true");
     			attr(svg, "xmlns", "http://www.w3.org/2000/svg");
     			attr(svg, "viewBox", "0 0 20 20");
     			attr(svg, "fill", "currentColor");
-    			attr(a, "class", "more svelte-1squjxh");
+    			attr(a, "class", "more svelte-i01ukl");
     			attr(a, "target", "_blank");
     			attr(a, "rel", "noopener noreferrer");
     			attr(a, "href", a_href_value = "" + (/*lang*/ ctx[0].url + /*text*/ ctx[1]));
     			attr(a, "title", "详细释义");
-    			attr(div0, "class", "header svelte-1squjxh");
-    			attr(div1, "class", div1_class_value = "lang " + /*lang*/ ctx[0].type + " svelte-1squjxh");
+    			attr(div0, "class", "header svelte-i01ukl");
+    			attr(div1, "class", div1_class_value = "lang " + /*lang*/ ctx[0].type + " svelte-i01ukl");
     		},
     		m(target, anchor) {
     			insert(target, div1, anchor);
@@ -1569,7 +1849,7 @@
     				check_outros();
     			}
 
-    			if (!current || dirty & /*lang*/ 1 && div1_class_value !== (div1_class_value = "lang " + /*lang*/ ctx[0].type + " svelte-1squjxh")) {
+    			if (!current || dirty & /*lang*/ 1 && div1_class_value !== (div1_class_value = "lang " + /*lang*/ ctx[0].type + " svelte-i01ukl")) {
     				attr(div1, "class", div1_class_value);
     			}
     		},
@@ -1593,11 +1873,16 @@
     }
 
     function instance$1($$self, $$props, $$invalidate) {
+    	const dispatch = createEventDispatcher();
     	let { lang } = $$props;
     	let { text } = $$props;
 
     	function onToggleLanguage() {
     		$$invalidate(0, lang.enabled = !lang.enabled, lang);
+
+    		if (lang.enabled) {
+    			dispatch('toggle', lang);
+    		}
     	}
 
     	function click_handler(event) {
@@ -1848,26 +2133,28 @@
     /* src/components/App.svelte generated by Svelte v3.46.4 */
 
     function add_css(target) {
-    	append_styles(target, "svelte-1xr5rc1", ".app.svelte-1xr5rc1{--main-color:#0C9553;font-size:16px;color:#000}.trigger.svelte-1xr5rc1{position:fixed;top:0;left:0;z-index:9999;display:block;width:24px;height:24px;padding:4px;border:0;border-radius:15%;background-color:var(--main-color);color:#fff;transition:visibility 0.3s, opcacity 0.3s;cursor:pointer}.trigger.svelte-1xr5rc1:hover{opacity:0.85}.panel.svelte-1xr5rc1{--content-min-height:8em;position:fixed;top:0;left:0;z-index:9999;display:flex;flex-direction:column;justify-content:center;width:24em;max-height:90vh;padding:0.5em 1em 1.2em;border:1px solid #eee;background-color:#fff;box-shadow:3px 2.8px 4.2px -5px rgba(0, 0, 0, 0.07),\n    7.3px 6.7px 10px -5px rgba(0, 0, 0, 0.05),\n    13.8px 12.5px 18.8px -5px rgba(0, 0, 0, 0.042),\n    24.6px 22.3px 33.5px -5px rgba(0, 0, 0, 0.035),\n    46px 41.8px 62.7px -5px rgba(0, 0, 0, 0.028),\n    110px 100px 150px -5px rgba(0, 0, 0, 0.02)\n  ;font-family:\"Segoe UI\", \"Microsoft Yahei\", meiryo, sans-serif;font-size:13px;line-height:1.5;transition:visibility 0.3s, opcacity 0.3s}.trigger.svelte-1xr5rc1:not(.is-show),.panel.svelte-1xr5rc1:not(.is-show){visibility:hidden;opacity:0}.panel.svelte-1xr5rc1:empty{align-items:center}.panel.svelte-1xr5rc1:empty::before{content:\"不受支持的文本\"}");
+    	append_styles(target, "svelte-if1gu8", ".app.svelte-if1gu8{--main-color:#0C9553;font-size:16px;color:#000}.trigger.svelte-if1gu8{position:fixed;top:0;left:0;z-index:9999;display:block;width:24px;height:24px;padding:4px;border:0;border-radius:15%;background-color:var(--main-color);color:#fff;transition:visibility 0.3s, opcacity 0.3s;cursor:pointer}.trigger.svelte-if1gu8:hover{opacity:0.85}.panel.svelte-if1gu8{position:fixed;top:0;left:0;z-index:9999;display:flex;flex-direction:column;justify-content:center;width:24em;max-height:90vh;padding:0.5em 1em 1.2em;border:1px solid #eee;background-color:#fff;box-shadow:3px 2.8px 4.2px -5px rgba(0, 0, 0, 0.07),\n    7.3px 6.7px 10px -5px rgba(0, 0, 0, 0.05),\n    13.8px 12.5px 18.8px -5px rgba(0, 0, 0, 0.042),\n    24.6px 22.3px 33.5px -5px rgba(0, 0, 0, 0.035),\n    46px 41.8px 62.7px -5px rgba(0, 0, 0, 0.028),\n    110px 100px 150px -5px rgba(0, 0, 0, 0.02)\n  ;font-family:\"Segoe UI\", \"Microsoft Yahei\", meiryo, sans-serif;font-size:13px;line-height:1.5;transition:visibility 0.2s, opacity 0.2s;transition-timing-function:ease-in}.trigger.svelte-if1gu8:not(.is-show),.panel.svelte-if1gu8:not(.is-show){visibility:hidden;opacity:0;transition-timing-function:ease-out}.panel.svelte-if1gu8:empty{align-items:center}.panel.svelte-if1gu8:empty::before{content:\"不受支持的文本\"}");
     }
 
     function get_each_context(ctx, list, i) {
     	const child_ctx = ctx.slice();
-    	child_ctx[12] = list[i];
+    	child_ctx[13] = list[i];
     	return child_ctx;
     }
 
-    // (58:4) {#each currentLangs as lang}
+    // (68:4) {#each currentLangs as lang}
     function create_each_block(ctx) {
     	let langsection;
     	let current;
 
     	langsection = new LangSection({
     			props: {
-    				lang: /*lang*/ ctx[12],
+    				lang: /*lang*/ ctx[13],
     				text: /*text*/ ctx[0]
     			}
     		});
+
+    	langsection.$on("toggle", /*onToggleLanguage*/ ctx[7]);
 
     	return {
     		c() {
@@ -1879,7 +2166,7 @@
     		},
     		p(ctx, dirty) {
     			const langsection_changes = {};
-    			if (dirty & /*currentLangs*/ 32) langsection_changes.lang = /*lang*/ ctx[12];
+    			if (dirty & /*currentLangs*/ 32) langsection_changes.lang = /*lang*/ ctx[13];
     			if (dirty & /*text*/ 1) langsection_changes.text = /*text*/ ctx[0];
     			langsection.$set(langsection_changes);
     		},
@@ -1929,17 +2216,17 @@
     				each_blocks[i].c();
     			}
 
-    			attr(button, "class", "trigger svelte-1xr5rc1");
+    			attr(button, "class", "trigger svelte-if1gu8");
     			attr(button, "aria-label", "开始翻译");
     			toggle_class(button, "is-show", /*showTrigger*/ ctx[3]);
-    			attr(div0, "class", "panel svelte-1xr5rc1");
+    			attr(div0, "class", "panel svelte-if1gu8");
     			toggle_class(div0, "is-show", /*showPanel*/ ctx[4]);
-    			attr(div1, "class", "app svelte-1xr5rc1");
+    			attr(div1, "class", "app svelte-if1gu8");
     		},
     		m(target, anchor) {
     			insert(target, div1, anchor);
     			append(div1, button);
-    			/*button_binding*/ ctx[9](button);
+    			/*button_binding*/ ctx[10](button);
     			append(div1, t);
     			append(div1, div0);
 
@@ -1947,14 +2234,14 @@
     				each_blocks[i].m(div0, null);
     			}
 
-    			/*div0_binding*/ ctx[10](div0);
+    			/*div0_binding*/ ctx[11](div0);
     			current = true;
 
     			if (!mounted) {
     				dispose = [
     					listen(button, "click", /*onTranslate*/ ctx[6]),
-    					listen(div1, "mousedown", stop_propagation(/*mousedown_handler*/ ctx[7])),
-    					listen(div1, "mouseup", stop_propagation(/*mouseup_handler*/ ctx[8]))
+    					listen(div1, "mousedown", stop_propagation(/*mousedown_handler*/ ctx[8])),
+    					listen(div1, "mouseup", stop_propagation(/*mouseup_handler*/ ctx[9]))
     				];
 
     				mounted = true;
@@ -1965,7 +2252,7 @@
     				toggle_class(button, "is-show", /*showTrigger*/ ctx[3]);
     			}
 
-    			if (dirty & /*currentLangs, text*/ 33) {
+    			if (dirty & /*currentLangs, text, onToggleLanguage*/ 161) {
     				each_value = /*currentLangs*/ ctx[5];
     				let i;
 
@@ -2016,9 +2303,9 @@
     		},
     		d(detaching) {
     			if (detaching) detach(div1);
-    			/*button_binding*/ ctx[9](null);
+    			/*button_binding*/ ctx[10](null);
     			destroy_each(each_blocks, detaching);
-    			/*div0_binding*/ ctx[10](null);
+    			/*div0_binding*/ ctx[11](null);
     			mounted = false;
     			run_all(dispose);
     		}
@@ -2056,10 +2343,23 @@
     		$$invalidate(5, currentLangs = Object.values(langs).filter(lang => lang.is(text)));
 
     		setTimeout(() => {
-    			setPosition(panel, rect);
+    			// 156 用于补偿受展开动画影响而缺失的面板高度
+    			setPosition(panel, rect, 156);
+
     			$$invalidate(3, showTrigger = false);
     			$$invalidate(4, showPanel = true);
     		});
+    	}
+
+    	function onToggleLanguage(event) {
+    		$$invalidate(5, currentLangs = currentLangs.map(currentLang => {
+    			if (currentLang !== event.detail) {
+    				// eslint-disable-next-line no-param-reassign
+    				currentLang.enabled = false;
+    			}
+
+    			return currentLang;
+    		}));
     	}
 
     	function mousedown_handler(event) {
@@ -2092,6 +2392,7 @@
     		showPanel,
     		currentLangs,
     		onTranslate,
+    		onToggleLanguage,
     		mousedown_handler,
     		mouseup_handler,
     		button_binding,

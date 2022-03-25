@@ -16,7 +16,7 @@ export function get(url: string, responseType?: 'arraybuffer' | 'blob' | 'json')
   });
 }
 
-export function setPosition(el: HTMLElement, rect: DOMRect): void {
+export function setPosition(el: HTMLElement, rect: DOMRect, offset = 0): void {
   const { innerWidth, innerHeight } = window;
   let left = rect.right;
   let top = rect.bottom;
@@ -26,8 +26,8 @@ export function setPosition(el: HTMLElement, rect: DOMRect): void {
   if (left + clientWidth > innerWidth) {
     left -= (rect.width + clientWidth);
   }
-  if (top + clientHeight > innerHeight) {
-    top -= (rect.height + clientHeight);
+  if (top + clientHeight + offset > innerHeight) {
+    top -= (rect.height + clientHeight + offset);
   }
   /* eslint-disable no-param-reassign */
   el.style.left = `${left}px`;

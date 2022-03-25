@@ -1,12 +1,20 @@
 <script lang="ts">
+/* eslint-disable import/no-extraneous-dependencies */
+import { createEventDispatcher } from 'svelte';
+import { slide } from 'svelte/transition';
 import type { Lang } from '../types';
 import ResultEntry from './ResultEntry.svelte';
+
+const dispatch = createEventDispatcher();
 
 export let lang: Lang;
 export let text: string;
 
 function onToggleLanguage() {
   lang.enabled = !lang.enabled;
+  if (lang.enabled) {
+    dispatch('toggle', lang);
+  }
 }
 </script>
 
@@ -48,32 +56,36 @@ function onToggleLanguage() {
   </div>
 
   {#if lang.enabled}
-    <div class="content">
+    <div class="content" transition:slide>
       {#await lang.request(text)}
-        <svg aria-hidden="true" class="loading" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="currentColor">
-            <rect x="20" y="20" width="4" height="10">
-              <animateTransform
-                attributeType="xml"
-                attributeName="transform" type="translate"
-                values="0 0; 0 20; 0 0"
-                begin="0" dur="0.6s" repeatCount="indefinite"
-              />
-            </rect>
-            <rect x="30" y="20" width="4" height="10">
-              <animateTransform attributeType="xml"
-                attributeName="transform" type="translate"
-                values="0 0; 0 20; 0 0"
-                begin="0.2s" dur="0.6s" repeatCount="indefinite"
-              />
-            </rect>
-            <rect x="40" y="20" width="4" height="10">
-              <animateTransform
-                attributeType="xml"
-                attributeName="transform" type="translate"
-                values="0 0; 0 20; 0 0"
-                begin="0.4s" dur="0.6s" repeatCount="indefinite"
-              />
-            </rect>
+        <svg aria-hidden="true" class="loading" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 50 100">
+          <circle cx="6" cy="50" r="6">
+            <animateTransform
+               attributeName="transform"
+               dur="1s"
+               type="translate"
+               values="0 15 ; 0 -15; 0 15"
+               repeatCount="indefinite"
+               begin="0.1"/>
+          </circle>
+          <circle cx="30" cy="50" r="6">
+            <animateTransform
+               attributeName="transform"
+               dur="1s"
+               type="translate"
+               values="0 10 ; 0 -10; 0 10"
+               repeatCount="indefinite"
+               begin="0.2"/>
+          </circle>
+          <circle cx="54" cy="50" r="6">
+            <animateTransform
+               attributeName="transform"
+               dur="1s"
+               type="translate"
+               values="0 5 ; 0 -5; 0 5"
+               repeatCount="indefinite"
+               begin="0.3"/>
+          </circle>
         </svg>
       {:then results}
         {#each results as entry}
@@ -150,8 +162,7 @@ function onToggleLanguage() {
 }
 
 .content {
-  min-height: var(--content-min-height);
-  max-height: 250px;
+  height: 12em;
   overflow: auto;
   overscroll-behavior: contain;
   scrollbar-width: thin;
@@ -169,7 +180,7 @@ function onToggleLanguage() {
   align-items: center;
   gap: 1em;
   width: 100%;
-  height: var(--content-min-height);
+  height: 100%;
   margin-top: 0.5em;
   color: #666;
 }
@@ -190,11 +201,11 @@ function onToggleLanguage() {
 .loading {
   box-sizing: border-box;
   display: block;
-  padding: 1.5em;
+  padding: 3em;
   margin: 0.5em auto 0;
-  width: var(--content-min-height);
-  height: var(--content-min-height);
-  color: var(--main-color);
+  height: 100%;
+  aspect-ratio: 1;
+  fill: var(--main-color);
   opacity: 0.75;
 }
 </style>

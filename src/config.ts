@@ -11,7 +11,7 @@ import type {
 } from './types';
 import { getYoudaoApi, getYoudaoVoice, get } from './util';
 
-const langs: Lang[] = [
+export const langs: Lang[] = [
   {
     enabled: true,
     type: 'en',
