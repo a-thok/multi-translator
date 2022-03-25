@@ -96,6 +96,7 @@ async function play() {
 }
 .meanings {
   all: unset;
+  display: block;
 }
 
 .meaning {
@@ -106,15 +107,17 @@ async function play() {
 .meaning-type {
   margin-right: 0.5em;
   color: var(--main-color);
+  font-weight: 500;
 }
 
 .meaning-content {
   all: unset;
+  display: block;
 }
 
-:global(.en) .meaning,
-:global(.fr) .meaning,
-:global(.th) .meaning {
-  display: flex;
+:global(.en) .meaning-type,
+:global(.fr) .meaning-type,
+:global(.th) .meaning-type {
+  float: left;
 }
 </style>

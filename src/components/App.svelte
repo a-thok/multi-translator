@@ -98,7 +98,7 @@ function onTranslate() {
 }
 
 .panel {
-  --content-min-height: 80px;
+  --content-min-height: 8em;
 
   position: fixed;
   top: 0;
@@ -107,7 +107,7 @@ function onTranslate() {
   display: flex;
   flex-direction: column;
   justify-content: center;
-  width: 20em;
+  width: 24em;
   /* min-height: 10em; */
   max-height: 90vh;
   padding: 0.5em 1em 1.2em;

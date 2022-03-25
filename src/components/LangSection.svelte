@@ -16,7 +16,7 @@ function onToggleLanguage() {
       class="switch"
       role="switch"
       aria-checked="{lang.enabled}"
-      :aria-label="{lang.name}语查询"
+      title="{lang.enabled ? '收起' : '展开'}{lang.name}语查询"
       on:click={onToggleLanguage}
     >
       {#if lang.enabled}
@@ -80,7 +80,20 @@ function onToggleLanguage() {
           <ResultEntry entry={entry}></ResultEntry>
         {/each}
       {:catch error}
-        <div class="tip">{error.message || '查询出错'}</div>
+        <div class="tip">
+          <p>{error.message || '查询出错'}，点击右上箭头，或试试这些词典：</p>
+          <p class="alternatives">
+            {#each lang.alternatives.concat([{
+              name: '维基词典',
+              url: 'https://en.wiktionary.org/wiki/',
+              icon: 'https://en.wiktionary.org/static/apple-touch/wiktionary/en.png',
+            }]) as item }
+              <a href="{item.url + text}" target="_blank" title="去{item.name}查询{text}">
+                <img src="{item.icon}" alt="{item.name}" width="24" height="24">
+              </a>
+            {/each}
+          </p>
+        </div>
       {/await}
     </div>
   {/if}
@@ -142,6 +155,7 @@ function onToggleLanguage() {
   overflow: auto;
   overscroll-behavior: contain;
   scrollbar-width: thin;
+  scrollbar-gutter: stable;
 }
 
 .content a {
@@ -150,21 +164,37 @@ function onToggleLanguage() {
 
 .tip {
   display: flex;
-  width: 100%;
-  height: var(--content-min-height);
+  flex-direction: column;
   justify-content: center;
   align-items: center;
+  gap: 1em;
+  width: 100%;
+  height: var(--content-min-height);
+  margin-top: 0.5em;
   color: #666;
-  font-size: 12px;
+}
+
+.tip p {
+  margin: 0;
+}
+
+.alternatives {
+  display: flex;
+  gap: 0.4em;
+}
+
+.alternatives img {
+  border-radius: 3px;
 }
 
 .loading {
   box-sizing: border-box;
   display: block;
-  padding: 0.5em;
-  margin: 0 auto;
+  padding: 1.5em;
+  margin: 0.5em auto 0;
   width: var(--content-min-height);
   height: var(--content-min-height);
-  color: #999;
+  color: var(--main-color);
+  opacity: 0.75;
 }
 </style>

@@ -13,6 +13,7 @@ export interface Lang {
     name: string;
     api: string;
     url: string;
+    alternatives: { name: string; url: string; icon: string }[]
     is: (text: string) => boolean;
     request: (text: string) => Promise<Entry[]>;
 }
@@ -63,7 +64,7 @@ export interface FrenchResult {
 }
 
 export interface JapanseResult {
-    newjc: {
+    newjc?: {
         word: {
             head: {
                 hw: string;

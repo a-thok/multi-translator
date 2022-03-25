@@ -18,6 +18,10 @@ const langs: Lang[] = [
     name: '英',
     api: getYoudaoApi('eng', 'ec'),
     url: 'https://dict.cn/',
+    alternatives: [
+      { name: '金山词霸', url: 'https://www.iciba.com/word?w=', icon: 'https://cdn.iciba.com/www/img/www/favicon.ico' },
+      { name: 'Urban Dictionary', url: 'https://www.urbandictionary.com/define.php?term=', icon: 'https://g.udimg.com/assets/apple-touch-icon-2ad9dfa3cb34c1d2740aaf1e8bcac791e2e654939e105241f3d3c8b889e4ac0c.png' },
+    ],
 
     is(text: string): boolean {
       return /^(\p{sc=Latin}|-|\s)+$/u.test(text);
@@ -54,6 +58,7 @@ const langs: Lang[] = [
     name: '法',
     api: getYoudaoApi('fr', 'fc'),
     url: 'https://www.frdic.com/dicts/fr/',
+    alternatives: [],
 
     is(text: string): boolean {
       return /^(\p{sc=Latin}|-|\s)+$/u.test(text);
@@ -83,6 +88,10 @@ const langs: Lang[] = [
     name: '日',
     api: getYoudaoApi('ja', 'newjc'),
     url: 'http://dict.asia/jc/',
+    alternatives: [
+      { name: '沪江小D', url: 'https://dict.hjenglish.com/jp/jc/', icon: 'https://res.hjfile.cn/tool/dict.hjenglish.com/img/logo@2x-e5fcc.png' },
+      { name: 'JapanDict', url: 'https://www.japandict.com/?s=', icon: 'https://www.japandict.com/apple-touch-icon-57x57.png?v=3.8' },
+    ],
 
     is(text: string): boolean {
       return /^(\p{sc=Han}|\p{sc=Hira}|\p{scx=Kana})+$/u.test(text);
@@ -90,8 +99,11 @@ const langs: Lang[] = [
 
     async request(text: string): Promise<Entry[]> {
       const res = await get(this.api + text);
-      const { newjc: { word: data } } = JSON.parse(res) as JapanseResult;
+      const { newjc } = JSON.parse(res) as JapanseResult;
 
+      if (!newjc) throw new Error('查无结果');
+
+      const { word: data } = newjc;
       const { mPhonicD, homonymD = [] } = data;
       const words = mPhonicD || [data];
       words.push(...homonymD.filter((part) => part.head.pjm));
@@ -113,6 +125,7 @@ const langs: Lang[] = [
     name: '韩',
     api: 'https://zh.dict.naver.com/api3/kozh/tooltip?query=',
     url: 'https://zh.dict.naver.com/#/search?query=',
+    alternatives: [],
 
     is(text: string): boolean {
       return /^\p{sc=Hangul}+$/u.test(text);
@@ -141,6 +154,7 @@ const langs: Lang[] = [
     name: '泰',
     api: 'https://api.thai2english.com/translations?q=',
     url: 'https://www.thai2english.com/search?q=',
+    alternatives: [],
 
     is(text: string): boolean {
       return /^\p{sc=Thai}+$/u.test(text);
@@ -165,6 +179,7 @@ const langs: Lang[] = [
     name: '越',
     api: 'https://vtudien.com/viet-trung/dictionary/nghia-cua-tu-',
     url: 'https://vtudien.com/viet-trung/dictionary/nghia-cua-tu-',
+    alternatives: [],
 
     is(text: string): boolean {
       return /^(\p{sc=Latin}|-|\s)+$/u.test(text);
@@ -198,6 +213,7 @@ const langs: Lang[] = [
     name: '他加禄',
     api: 'https://www.tagalog.com/ajax/reference_guide_search_results.php?json=1&num_results=5&keyword=',
     url: 'https://www.tagalog.com/dictionary/#',
+    alternatives: [],
 
     is(text: string): boolean {
       return /^(\p{sc=Latin}|-|\s)+$/u.test(text);
@@ -235,6 +251,7 @@ const langs: Lang[] = [
     name: '谷歌翻译',
     api: 'https://translate.google.cn/translate_a/single?client=gtx&dt=t&dt=bd&dj=1&source=input&sl=auto&tl=en&q=',
     url: 'https://translate.google.cn/?sl=auto&tl=en&op=translate&text=',
+    alternatives: [],
 
     is(): boolean {
       return true;
