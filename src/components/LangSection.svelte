@@ -113,7 +113,7 @@ function onToggleLanguage() {
 
 <style>
 .lang:not(:first-child) {
-  margin-top: 1em;
+  margin-top: 0.5em;
 }
 
 .header {
@@ -167,6 +167,16 @@ function onToggleLanguage() {
   overscroll-behavior: contain;
   scrollbar-width: thin;
   scrollbar-gutter: stable;
+
+  background:
+    linear-gradient(#fff 33%, rgba(255,255,255, 0)),
+    linear-gradient(rgba(255,255,255, 0), #fff 66%) 0 100%,
+    radial-gradient(farthest-side at 50% 0, rgba(200,200,200, 0.5), rgba(0,0,0,0)),
+    radial-gradient(farthest-side at 50% 100%, rgba(200,200,200, 0.5), rgba(0,0,0,0)) 0 100%;
+  background-color: #fff;
+  background-repeat: no-repeat;
+  background-attachment: local, local, scroll, scroll;
+  background-size: 100% 12px, 100% 12px, 100% 4px, 100% 4px;
 }
 
 .content a {
@@ -181,7 +191,6 @@ function onToggleLanguage() {
   gap: 1em;
   width: 100%;
   height: 100%;
-  margin-top: 0.5em;
   color: #666;
 }
 
@@ -202,7 +211,7 @@ function onToggleLanguage() {
   box-sizing: border-box;
   display: block;
   padding: 3em;
-  margin: 0.5em auto 0;
+  margin: 0 auto;
   height: 100%;
   aspect-ratio: 1;
   fill: var(--main-color);
