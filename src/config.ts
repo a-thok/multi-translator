@@ -157,7 +157,7 @@ const langs: Lang[] = [
     alternatives: [],
 
     is(text: string): boolean {
-      return /^\p{sc=Thai}+$/u.test(text);
+      return /^(\p{sc=Thai}|\s)+$/u.test(text);
     },
 
     async request(text: string): Promise<Entry[]> {

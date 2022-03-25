@@ -1748,7 +1748,7 @@
             url: 'https://www.thai2english.com/search?q=',
             alternatives: [],
             is(text) {
-                return /^\p{sc=Thai}+$/u.test(text);
+                return /^(\p{sc=Thai}|\s)+$/u.test(text);
             },
             async request(text) {
                 const res = await get(this.api + text);
