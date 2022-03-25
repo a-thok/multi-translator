@@ -16,7 +16,7 @@ export default {
 
   output: {
     format: 'iife',
-    dir: 'dist',
+    file: 'dist/index.user.js',
     banner: metablock(),
     sourcemap: true,
   },

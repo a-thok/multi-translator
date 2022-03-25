@@ -22,7 +22,7 @@ npm start
 
 ## 使用
 
-直接将 /dist/index.js 拖入用户脚本管理中安装
+直接将 /dist/index.user.js 拖入用户脚本管理中，或者通过 [greasyfork](https://greasyfork.org/zh-CN/scripts/373345-%E5%A4%9A%E8%AF%AD%E8%A8%80%E5%88%92%E8%AF%8D%E7%BF%BB%E8%AF%91) 安装。
 
 在最新版本的 Firefox 下用 FireMonkey 测试通过，不保证在其它浏览器和其它用户脚本管理器中可用
 

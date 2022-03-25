@@ -6,6 +6,7 @@
 // @allFrames    true
 // @grant    GM_xmlhttpRequest
 // @run-at    document-end
+// @license    MIT
 // ==/UserScript==
 
 (function () {
@@ -1964,4 +1965,4 @@
     }
 
 })();
-//# sourceMappingURL=index.js.map
+//# sourceMappingURL=index.user.js.map
