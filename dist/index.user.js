@@ -800,10 +800,10 @@
         let top = rect.bottom;
         const { clientWidth, clientHeight } = el;
         if (left + clientWidth > innerWidth) {
-            left -= (rect.width + clientWidth);
+            left -= clientWidth;
         }
         if (top + clientHeight + offset > innerHeight) {
-            top -= (rect.height + clientHeight + offset);
+            top -= (clientHeight + offset);
         }
         /* eslint-disable no-param-reassign */
         el.style.left = `${left}px`;
