@@ -2179,7 +2179,7 @@
     	return child_ctx;
     }
 
-    // (68:4) {#each currentLangs as lang}
+    // (74:4) {#each currentLangs as lang}
     function create_each_block(ctx) {
     	let langsection;
     	let current;
@@ -2377,7 +2377,16 @@
     	});
 
     	function onTranslate() {
-    		$$invalidate(5, currentLangs = Object.values(langs).filter(lang => lang.is(text)));
+    		const filterResult = Object.values(langs).filter(lang => lang.is(text));
+
+    		// 只有谷歌翻译结果时，默认展开谷歌翻译
+    		const typeAll = filterResult.find(lang => lang.type === 'all');
+
+    		if (typeAll) {
+    			typeAll.enabled = filterResult.length === 1;
+    		}
+
+    		$$invalidate(5, currentLangs = filterResult);
 
     		setTimeout(() => {
     			// 156 用于补偿受展开动画影响而缺失的面板高度

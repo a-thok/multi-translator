@@ -31,7 +31,14 @@ window.addEventListener('mousedown', () => {
 });
 
 function onTranslate() {
-  currentLangs = Object.values(langs).filter((lang: Lang) => lang.is(text));
+  const filterResult = Object.values(langs).filter((lang: Lang) => lang.is(text));
+  // 只有谷歌翻译结果时，默认展开谷歌翻译
+  const typeAll = filterResult.find((lang) => lang.type === 'all');
+  if (typeAll) {
+    typeAll.enabled = filterResult.length === 1;
+  }
+
+  currentLangs = filterResult;
   setTimeout(() => {
     // 156 用于补偿受展开动画影响而缺失的面板高度
     setPosition(panel, rect, 156);
