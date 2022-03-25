@@ -836,7 +836,7 @@
     	let t0;
     	let t1;
     	let if_block0 = /*entry*/ ctx[0].phonetic && create_if_block_3(ctx);
-    	let if_block1 = /*entry*/ ctx[0].sound && create_if_block_2(ctx);
+    	let if_block1 = /*entry*/ ctx[0].sound && create_if_block_2$1(ctx);
 
     	return {
     		c() {
@@ -877,7 +877,7 @@
     				if (if_block1) {
     					if_block1.p(ctx, dirty);
     				} else {
-    					if_block1 = create_if_block_2(ctx);
+    					if_block1 = create_if_block_2$1(ctx);
     					if_block1.c();
     					if_block1.m(div, null);
     				}
@@ -927,7 +927,7 @@
     }
 
     // (28:6) {#if entry.sound}
-    function create_if_block_2(ctx) {
+    function create_if_block_2$1(ctx) {
     	let button;
     	let svg;
     	let path;
@@ -1273,7 +1273,7 @@
     }
 
     // (25:6) {#if lang.enabled}
-    function create_if_block_1(ctx) {
+    function create_if_block_2(ctx) {
     	let svg;
     	let path;
 
@@ -1377,12 +1377,14 @@
     // (89:6) {:catch error}
     function create_catch_block(ctx) {
     	let div;
-    	let p0;
-    	let t0_value = (/*error*/ ctx[9].message || '查询出错') + "";
     	let t0;
+    	let p0;
+    	let t1_value = (/*error*/ ctx[9].message || '查询出错') + "";
     	let t1;
     	let t2;
+    	let t3;
     	let p1;
+    	let if_block = /*lang*/ ctx[0].type === 'en' && create_if_block_1();
 
     	let each_value_1 = /*lang*/ ctx[0].alternatives.concat([
     		{
@@ -1401,10 +1403,12 @@
     	return {
     		c() {
     			div = element("div");
+    			if (if_block) if_block.c();
+    			t0 = space();
     			p0 = element("p");
-    			t0 = text(t0_value);
-    			t1 = text("，点击右上箭头，或试试这些词典：");
-    			t2 = space();
+    			t1 = text(t1_value);
+    			t2 = text("，点击右上箭头，或试试这些词典:");
+    			t3 = space();
     			p1 = element("p");
 
     			for (let i = 0; i < each_blocks.length; i += 1) {
@@ -1417,10 +1421,12 @@
     		},
     		m(target, anchor) {
     			insert(target, div, anchor);
+    			if (if_block) if_block.m(div, null);
+    			append(div, t0);
     			append(div, p0);
-    			append(p0, t0);
     			append(p0, t1);
-    			append(div, t2);
+    			append(p0, t2);
+    			append(div, t3);
     			append(div, p1);
 
     			for (let i = 0; i < each_blocks.length; i += 1) {
@@ -1428,7 +1434,18 @@
     			}
     		},
     		p(ctx, dirty) {
-    			if (dirty & /*lang, text*/ 3 && t0_value !== (t0_value = (/*error*/ ctx[9].message || '查询出错') + "")) set_data(t0, t0_value);
+    			if (/*lang*/ ctx[0].type === 'en') {
+    				if (if_block) ; else {
+    					if_block = create_if_block_1();
+    					if_block.c();
+    					if_block.m(div, t0);
+    				}
+    			} else if (if_block) {
+    				if_block.d(1);
+    				if_block = null;
+    			}
+
+    			if (dirty & /*lang, text*/ 3 && t1_value !== (t1_value = (/*error*/ ctx[9].message || '查询出错') + "")) set_data(t1, t1_value);
 
     			if (dirty & /*lang, text*/ 3) {
     				each_value_1 = /*lang*/ ctx[0].alternatives.concat([
@@ -1464,12 +1481,32 @@
     		o: noop,
     		d(detaching) {
     			if (detaching) detach(div);
+    			if (if_block) if_block.d();
     			destroy_each(each_blocks, detaching);
     		}
     	};
     }
 
-    // (93:12) {#each lang.alternatives.concat([{               name: '维基词典',               url: 'https://en.wiktionary.org/wiki/',               icon: 'https://en.wiktionary.org/static/apple-touch/wiktionary/en.png',             }]) as item }
+    // (91:10) {#if lang.type === 'en'}
+    function create_if_block_1(ctx) {
+    	let p;
+
+    	return {
+    		c() {
+    			p = element("p");
+    			p.textContent = "(如果这不是英语，请切换为下方其它语言)";
+    			attr(p, "class", "svelte-2zpxbn");
+    		},
+    		m(target, anchor) {
+    			insert(target, p, anchor);
+    		},
+    		d(detaching) {
+    			if (detaching) detach(p);
+    		}
+    	};
+    }
+
+    // (96:12) {#each lang.alternatives.concat([{               name: '维基词典',               url: 'https://en.wiktionary.org/wiki/',               icon: 'https://en.wiktionary.org/static/apple-touch/wiktionary/en.png',             }]) as item }
     function create_each_block_1(ctx) {
     	let a;
     	let img;
@@ -1732,7 +1769,7 @@
     	let dispose;
 
     	function select_block_type(ctx, dirty) {
-    		if (/*lang*/ ctx[0].enabled) return create_if_block_1;
+    		if (/*lang*/ ctx[0].enabled) return create_if_block_2;
     		return create_else_block;
     	}
 

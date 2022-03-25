@@ -93,7 +93,10 @@ function onToggleLanguage() {
         {/each}
       {:catch error}
         <div class="tip">
-          <p>{error.message || '查询出错'}，点击右上箭头，或试试这些词典：</p>
+          {#if lang.type === 'en'}
+            <p>(如果这不是英语，请切换为下方其它语言)</p>
+          {/if}
+          <p>{error.message || '查询出错'}，点击右上箭头，或试试这些词典:</p>
           <p class="alternatives">
             {#each lang.alternatives.concat([{
               name: '维基词典',
