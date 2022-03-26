@@ -213,7 +213,7 @@ function onToggleLanguage() {
 .loading {
   box-sizing: border-box;
   display: block;
-  padding: 3em;
+  padding: 3.5em;
   margin: 0 auto;
   height: 100%;
   aspect-ratio: 1;

@@ -148,7 +148,7 @@ function onToggleLanguage(event: CustomEvent<Lang>) {
 .panel:not(.is-show) {
   visibility: hidden;
   opacity: 0;
-  transition-timing-function: ease-out;
+  transition: none;
 }
 
 .panel:empty {
