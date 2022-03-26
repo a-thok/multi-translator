@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name    多语言划词翻译
 // @description    支持英、法、日、韩、泰、越、他加禄语，部分语言的翻译结果为英语
-// @version    2.0
+// @version    2.1.0
 // @match    *://*/*
 // @allFrames    true
 // @grant    GM_xmlhttpRequest

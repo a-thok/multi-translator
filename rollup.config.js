@@ -7,7 +7,14 @@ import serve from 'rollup-plugin-serve';
 import pkg from './package.json';
 
 function metablock() {
-  const entries = Object.entries(pkg.userscript).map(([key, value]) => `// @${key}    ${value}`);
+  const { version, description, userscript: { name, ...others } } = pkg;
+  const meta = {
+    name,
+    description,
+    version,
+    ...others,
+  };
+  const entries = Object.entries(meta).map(([key, value]) => `// @${key}    ${value}`);
   return (`// ==UserScript==\n${entries.join('\n')}\n// ==/UserScript==\n`);
 }
 
