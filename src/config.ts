@@ -123,8 +123,8 @@ export const langs: Lang[] = [
     enabled: true,
     type: 'kr',
     name: '韩语',
-    api: 'https://zh.dict.naver.com/api3/kozh/tooltip?query=',
-    url: 'https://zh.dict.naver.com/#/search?query=',
+    api: 'https://ac-dict.naver.com/kozh/ac?st=11&r_lt=11&q=',
+    url: 'https://korean.dict.naver.com/kozhdict/#/search?query=',
     alternatives: [],
 
     is(text: string): boolean {
@@ -133,18 +133,18 @@ export const langs: Lang[] = [
 
     async request(text: string): Promise<Entry[]> {
       const res = await get(this.api + text);
-      const { jsonResult } = JSON.parse(res) as { jsonResult: KoreanResult[] };
+      const jsonResult = JSON.parse(res) as KoreanResult;
+      const { query: [word], items } = jsonResult;
 
-      if (!jsonResult.length) throw new Error('查无结果');
+      if (!jsonResult.items[0].length) throw new Error('查无结果');
 
-      return jsonResult.map((item) => ({
-        word: item.entryName,
-        phonetic: item.phoneticSymbolP,
-        meanings: item.partOfSpeechs.map((speech) => ({
-          type: speech.partOfSpeechNameForeign,
-          items: speech.means.map(({ mean }) => mean),
-        })),
-      }));
+      return [{
+        word,
+        // phonetic: item.phoneticSymbolP,
+        meanings: [{
+          items: items.flat().map((item) => `[${item[0]}] ${item[3]}`),
+        }],
+      }];
     },
   },
 

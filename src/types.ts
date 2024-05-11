@@ -128,28 +128,8 @@ export interface ThaiResult {
 }
 
 export interface KoreanResult {
-    entryId: string,
-    entryName: string,
-    phoneticSymbolP: string,
-    mPhoneticSymbolP: string,
-    haja: string,
-    prons: string,
-    detailUrl: string,
-    moreUrl: string,
-    query: string,
-    noresult: string,
-    langTypeCode: string,
-    partGroupYn: null,
-    partOfSpeechs: {
-        partOfSpeechName: string,
-        partOfSpeechNameForeign: string,
-        means: {
-            sequence: string,
-            mean: string
-        }[]
-    }[],
-    matchType: null,
-    documentQuality: number
+  query: string[];
+  items: Array<Array<Array<string[]>>>;
 }
 
 export interface TagalogResult {
