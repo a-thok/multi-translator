@@ -29,6 +29,14 @@ export function setPosition(el: HTMLElement, rect: DOMRect, offset = 0): void {
   if (top + clientHeight + offset > innerHeight) {
     top -= (clientHeight + offset);
   }
+
+  if (left < 0) {
+    left = 0;
+  }
+  if (top < 0) {
+    top = 0;
+  }
+
   /* eslint-disable no-param-reassign */
   el.style.left = `${left}px`;
   el.style.top = `${top}px`;

@@ -124,6 +124,7 @@ function onToggleLanguage(event: CustomEvent<Lang>) {
   flex-direction: column;
   justify-content: center;
   width: 24em;
+  max-width: 90vw;
   /* min-height: 10em; */
   max-height: 90vh;
   padding: 0.5em 1em 1.2em;
