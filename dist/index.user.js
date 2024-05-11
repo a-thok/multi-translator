@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name    多语言划词翻译
-// @description    支持英、法、日、韩、泰、越、他加禄语，部分语言的翻译结果为英语
-// @version    2.1.0
+// @description    支持英、法、日、韩、泰、越、他加禄语和马来·印尼语，部分语言的翻译结果为英语
+// @version    2.3.0
 // @match    *://*/*
 // @allFrames    true
 // @grant    GM_xmlhttpRequest
@@ -2047,25 +2047,25 @@
             enabled: true,
             type: 'kr',
             name: '韩语',
-            api: 'https://zh.dict.naver.com/api3/kozh/tooltip?query=',
-            url: 'https://zh.dict.naver.com/#/search?query=',
+            api: 'https://ac-dict.naver.com/kozh/ac?st=11&r_lt=11&q=',
+            url: 'https://korean.dict.naver.com/kozhdict/#/search?query=',
             alternatives: [],
             is(text) {
                 return /^\p{sc=Hangul}+$/u.test(text);
             },
             async request(text) {
                 const res = await get(this.api + text);
-                const { jsonResult } = JSON.parse(res);
-                if (!jsonResult.length)
+                const jsonResult = JSON.parse(res);
+                const { query: [word], items } = jsonResult;
+                if (!jsonResult.items[0].length)
                     throw new Error('查无结果');
-                return jsonResult.map((item) => ({
-                    word: item.entryName,
-                    phonetic: item.phoneticSymbolP,
-                    meanings: item.partOfSpeechs.map((speech) => ({
-                        type: speech.partOfSpeechNameForeign,
-                        items: speech.means.map(({ mean }) => mean),
-                    })),
-                }));
+                return [{
+                        word,
+                        // phonetic: item.phoneticSymbolP,
+                        meanings: [{
+                                items: items.flat().map((item) => `[${item[0]}] ${item[3]}`),
+                            }],
+                    }];
             },
         },
         {
