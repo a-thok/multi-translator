@@ -9,7 +9,7 @@ export interface Entry {
 }
 export interface Lang {
     enabled: boolean;
-    type: 'en' | 'fr' | 'ja' | 'kr' | 'th' | 'vt' | 'tl' | 'all';
+    type: 'en' | 'fr' | 'ja' | 'kr' | 'th' | 'vt' | 'tl' | 'in' | 'all';
     name: string;
     api: string;
     url: string;

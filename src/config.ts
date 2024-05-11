@@ -15,7 +15,7 @@ export const langs: Lang[] = [
   {
     enabled: true,
     type: 'en',
-    name: '英',
+    name: '英语',
     api: getYoudaoApi('eng', 'ec'),
     url: 'https://dict.cn/',
     alternatives: [
@@ -55,7 +55,7 @@ export const langs: Lang[] = [
   {
     enabled: false,
     type: 'fr',
-    name: '法',
+    name: '法语',
     api: getYoudaoApi('fr', 'fc'),
     url: 'https://www.frdic.com/dicts/fr/',
     alternatives: [],
@@ -85,7 +85,7 @@ export const langs: Lang[] = [
   {
     enabled: true,
     type: 'ja',
-    name: '日',
+    name: '日语',
     api: getYoudaoApi('ja', 'newjc'),
     url: 'http://dict.asia/jc/',
     alternatives: [
@@ -122,7 +122,7 @@ export const langs: Lang[] = [
   {
     enabled: true,
     type: 'kr',
-    name: '韩',
+    name: '韩语',
     api: 'https://zh.dict.naver.com/api3/kozh/tooltip?query=',
     url: 'https://zh.dict.naver.com/#/search?query=',
     alternatives: [],
@@ -151,7 +151,7 @@ export const langs: Lang[] = [
   {
     enabled: true,
     type: 'th',
-    name: '泰',
+    name: '泰语',
     api: 'https://api.thai2english.com/translations?q=',
     url: 'https://www.thai2english.com/search?q=',
     alternatives: [],
@@ -176,7 +176,7 @@ export const langs: Lang[] = [
   {
     enabled: false,
     type: 'vt',
-    name: '越',
+    name: '越南语',
     api: 'https://vtudien.com/viet-trung/dictionary/nghia-cua-tu-',
     url: 'https://vtudien.com/viet-trung/dictionary/nghia-cua-tu-',
     alternatives: [],
@@ -210,7 +210,7 @@ export const langs: Lang[] = [
   {
     enabled: false,
     type: 'tl',
-    name: '他加禄',
+    name: '他加禄语',
     api: 'https://www.tagalog.com/ajax/reference_guide_search_results.php?json=1&num_results=5&keyword=',
     url: 'https://www.tagalog.com/dictionary/#',
     alternatives: [],
@@ -242,6 +242,58 @@ export const langs: Lang[] = [
           meanings,
         };
       });
+    },
+  },
+
+  {
+    enabled: false,
+    type: 'in',
+    name: '马来·印尼语',
+    api: 'https://www.ekamus.info/index.php/term/%E9%A9%AC%E6%9D%A5%E6%96%87-%E5%8D%8E%E6%96%87%E5%AD%97%E5%85%B8,',
+    url: 'https://www.ekamus.info/index.php/term/%E9%A9%AC%E6%9D%A5%E6%96%87-%E5%8D%8E%E6%96%87%E5%AD%97%E5%85%B8,',
+    alternatives: [],
+
+    is(text: string): boolean {
+      return /^(\p{sc=Latin}|-|\s)+$/u.test(text);
+    },
+
+    async request(text: string): Promise<Entry[]> {
+      const res = await get(this.api + text);
+      const domparser = new DOMParser();
+      const dom = domparser.parseFromString(res, 'text/html');
+
+      const card = dom.querySelector('.row > .col-xs-12 .card') as HTMLDivElement;
+      const cardHeader = card.querySelector('.card-header') as HTMLDivElement;
+      const cardDefn = card.querySelector('.defn') as HTMLDivElement;
+      const cardDefnChildNodes = Array.from(cardDefn.childNodes);
+
+      const meanings = [];
+
+      const mainMeaning = cardDefnChildNodes
+        .filter((childNode) => childNode.nodeName === '#text')
+        .map((childNode) => childNode.textContent || '');
+      meanings.push({ items: mainMeaning });
+
+      const otherMeanings = cardDefnChildNodes
+        .filter((childNode) => childNode.nodeName === 'P')
+        .map((paragrahpNode) => {
+          const meaning: Entry['meanings'][0] = { type: '', items: [] };
+          paragrahpNode.childNodes.forEach((childNode) => {
+            if (childNode.nodeName === 'STRONG') {
+              meaning.type = childNode.textContent || '';
+            }
+            if (childNode.nodeName === '#text') {
+              meaning.items.push(childNode.textContent || '');
+            }
+          });
+          return meaning;
+        });
+      meanings.push(...otherMeanings);
+
+      return [{
+        word: cardHeader.textContent || '',
+        meanings,
+      }];
     },
   },
 
