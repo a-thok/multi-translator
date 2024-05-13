@@ -292,8 +292,8 @@ export const langs: Lang[] = [
   {
     type: 'all',
     name: 'Google 翻译',
-    api: 'https://translate.google.cn/translate_a/single?client=gtx&dt=t&dt=bd&dj=1&source=input&sl=auto&tl=en&q=',
-    url: 'https://translate.google.cn/?sl=auto&tl=en&op=translate&text=',
+    api: 'https://translate.google.com/translate_a/single?client=gtx&dt=t&dt=bd&dj=1&source=input&sl=auto&tl=zh-CN&q=',
+    url: 'https://translate.google.com/?sl=auto&tl=zh-CN&op=translate&text=',
     alternatives: [],
 
     is(): boolean {
