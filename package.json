@@ -1,6 +1,6 @@
 {
   "name": "multi-translator",
-  "version": "2.3.0",
+  "version": "2.4.0",
   "description": "支持英、法、日、韩、泰、越、他加禄语和马来·印尼语，部分语言的翻译结果为英语",
   "main": "index.js",
   "scripts": {
