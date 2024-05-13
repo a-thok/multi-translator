@@ -16,7 +16,7 @@ export function get(url: string, responseType?: 'arraybuffer' | 'blob' | 'json')
   });
 }
 
-export function setPosition(el: HTMLElement, rect: DOMRect, offset = 0): void {
+export function setPosition(el: HTMLElement, rect: DOMRect): void {
   const { innerWidth, innerHeight } = window;
   let left = rect.right;
   let top = rect.bottom;
@@ -26,8 +26,8 @@ export function setPosition(el: HTMLElement, rect: DOMRect, offset = 0): void {
   if (left + clientWidth > innerWidth) {
     left -= clientWidth;
   }
-  if (top + clientHeight + offset > innerHeight) {
-    top -= (clientHeight + offset);
+  if (top + clientHeight > innerHeight) {
+    top -= clientHeight;
   }
 
   if (left < 0) {

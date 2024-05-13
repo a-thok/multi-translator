@@ -10,7 +10,8 @@ let trigger: HTMLButtonElement;
 let panel: HTMLDivElement;
 let showTrigger = false;
 let showPanel = false;
-let currentLangs: Lang[] = [];
+let matchedLangs: Lang[] = [];
+let activeLang: Lang;
 
 window.addEventListener('mouseup', () => {
   const selection = window.getSelection() as Selection;
@@ -27,34 +28,24 @@ window.addEventListener('mouseup', () => {
 window.addEventListener('mousedown', () => {
   showTrigger = false;
   showPanel = false;
-  currentLangs = [];
+  matchedLangs = [];
 });
 
 function onTranslate() {
-  const filterResult = Object.values(langs).filter((lang: Lang) => lang.is(text));
-  // 只有谷歌翻译结果时，默认展开谷歌翻译
-  const typeAll = filterResult.find((lang) => lang.type === 'all');
-  if (typeAll) {
-    typeAll.enabled = filterResult.length === 1;
+  matchedLangs = Object.values(langs).filter((lang: Lang) => lang.is(text));
+  if (!activeLang || !matchedLangs.find((lang) => lang === activeLang)) {
+    ([activeLang] = matchedLangs);
   }
 
-  currentLangs = filterResult;
   setTimeout(() => {
-    // 156 用于补偿受展开动画影响而缺失的面板高度
-    setPosition(panel, rect, 156);
+    setPosition(panel, rect);
     showTrigger = false;
     showPanel = true;
   });
 }
 
-function onToggleLanguage(event: CustomEvent<Lang>) {
-  currentLangs = currentLangs.map((currentLang) => {
-    if (currentLang !== event.detail) {
-      // eslint-disable-next-line no-param-reassign
-      currentLang.enabled = false;
-    }
-    return currentLang;
-  });
+function onToggleLanguage(targetLang: Lang) {
+  activeLang = targetLang;
 }
 </script>
 
@@ -80,9 +71,39 @@ function onToggleLanguage(event: CustomEvent<Lang>) {
     class="panel"
     class:is-show={showPanel}
   >
-    {#each currentLangs as lang}
-      <LangSection lang={lang} text={text} on:toggle="{onToggleLanguage}"></LangSection>
-    {/each}
+    <ul class="tabs" role="tablist">
+      {#each matchedLangs as lang}
+        <li
+          class="tab{lang === activeLang ? ' active' : ''}"
+          title="{lang.name}"
+          role="tab"
+          aria-selected="{lang === activeLang}"
+          on:click="{() => onToggleLanguage(lang)}"
+        >
+          {lang.name.split('')[0]}
+        </li>
+      {/each}
+      {#if activeLang}
+        <li class="more">
+          <a
+            target="_blank"
+            rel="noopener noreferrer"
+            href="{activeLang.url}{text}"
+            title="详细释义"
+            on:click|stopPropagation
+          >
+            <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+              <path d="M11 3a1 1 0 100 2h2.586l-6.293 6.293a1 1 0 101.414 1.414L15 6.414V9a1 1 0 102 0V4a1 1 0 00-1-1h-5z" />
+              <path d="M5 5a2 2 0 00-2 2v8a2 2 0 002 2h8a2 2 0 002-2v-3a1 1 0 10-2 0v3H5V7h3a1 1 0 000-2H5z" />
+            </svg>
+          </a>
+        </li>
+      {/if}
+    </ul>
+
+    {#if activeLang}
+      <LangSection lang={activeLang} text={text}></LangSection>
+    {/if}
   </div>
 </div>
 
@@ -123,11 +144,11 @@ function onToggleLanguage(event: CustomEvent<Lang>) {
   display: flex;
   flex-direction: column;
   justify-content: center;
+  height: 16em;
   width: 24em;
-  max-width: 90vw;
-  /* min-height: 10em; */
-  max-height: 90vh;
-  padding: 0.5em 1em 1.2em;
+  max-width: 100vw;
+  max-height: 100vh;
+  padding-bottom: 0.5em;
   border: 1px solid #eee;
   background-color: #fff;
   box-shadow:
@@ -152,11 +173,51 @@ function onToggleLanguage(event: CustomEvent<Lang>) {
   transition: none;
 }
 
-.panel:empty {
-  align-items: center;
+.tabs {
+  list-style: none;
+  display: flex;
+  padding: 0;
+  border-bottom: 1px solid #f5f5f5;
+  margin: 0;
+  background-color: #fcfcfc;
+  user-select: none;
 }
 
-.panel:empty::before {
-  content: "不受支持的文本";
+.tab {
+  flex: none;
+  padding: 0.5em 1em;
+  border-right: 1px solid #f5f5f5;
+  border-bottom: 1px solid #f5f5f5;
+  margin-bottom: -1px;
+  color: #666;
+  cursor: pointer;
+  transition: 0.2s;
+}
+
+.tab.active {
+  padding-inline: 1.25em;
+  background-color: #fff;
+  color: var(--main-color);
+  border-bottom-color: #fff;
+  font-weight: bold;
+}
+
+.more {
+  box-sizing: border-box;;
+  height: 100%;
+  margin-left: auto;
+  aspect-ratio: 1;
+}
+
+.more a {
+  display: block;
+  padding: 0.65em;
+  color: #a2a5a6;
+  line-height: 0;
+  transition: 0.3s;
+}
+
+.more a:hover {
+  color: #000;
 }
 </style>
