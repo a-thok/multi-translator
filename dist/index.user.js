@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name    多语言划词翻译
-// @description    支持英、法、日、韩、泰、越、他加禄语和马来·印尼语，部分语言的翻译结果为英语
-// @version    2.4.0
+// @description    支持英、法、日、韩、泰、越、他加禄语和印尼语，部分语言的翻译结果为英语
+// @version    2.5.0
 // @match    *://*/*
 // @allFrames    true
 // @grant    GM_xmlhttpRequest
@@ -1672,8 +1672,8 @@
         {
             type: 'all',
             name: 'Google 翻译',
-            api: 'https://translate.google.cn/translate_a/single?client=gtx&dt=t&dt=bd&dj=1&source=input&sl=auto&tl=en&q=',
-            url: 'https://translate.google.cn/?sl=auto&tl=en&op=translate&text=',
+            api: 'https://translate.google.com/translate_a/single?client=gtx&dt=t&dt=bd&dj=1&source=input&sl=auto&tl=zh-CN&q=',
+            url: 'https://translate.google.com/?sl=auto&tl=zh-CN&op=translate&text=',
             alternatives: [],
             is() {
                 return true;
